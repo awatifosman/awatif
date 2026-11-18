@@ -1,26 +1,50 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { CheckCircle2, Mail, Phone, Send, User, X, AlertCircle } from 'lucide-react';
+import {
+  AlertCircle,
+  BookOpen,
+  CheckCircle2,
+  Coins,
+  Loader2,
+  Mail,
+  Phone,
+  Send,
+  User,
+  X,
+} from 'lucide-react';
+import {
+  NOTIFY_EMAIL,
+  useLeadSubmission,
+} from '../hooks/useLeadSubmission';
+import {
+  FUNDING_OPTIONS,
+  PROGRAM_OPTIONS,
+  type CrmLeadRecord,
+  type FundingInterest,
+  type ProgramChoice,
+} from '../types/crm';
 
 interface ApplyModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onLeadCreated?: (lead: CrmLeadRecord) => void;
 }
 
-const TARGET_EMAIL = 'awatifosman86@gmail.com';
-
-type SubmitState =
-  | { status: 'idle' }
-  | { status: 'submitting' }
-  | { status: 'success'; nama: string; telefon: string }
-  | { status: 'error'; message: string }
-  | { status: 'fallback'; mailtoLink: string };
-
-export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
+export function ApplyModal({ isOpen, onClose, onLeadCreated }: ApplyModalProps) {
   const [nama, setNama] = useState('');
   const [telefon, setTelefon] = useState('');
   const [emel, setEmel] = useState('');
-  const [submitState, setSubmitState] = useState<SubmitState>({ status: 'idle' });
+  const [programPilihan, setProgramPilihan] = useState<ProgramChoice>(
+    'Diploma Pengurusan Logistik',
+  );
+  const [minatPembiayaan, setMinatPembiayaan] = useState<FundingInterest>('Belum Pasti');
+
   const firstInputRef = useRef<HTMLInputElement>(null);
+  const { state, submitLead, reset, isLoading } = useLeadSubmission((savedLead) => {
+    setNama('');
+    setTelefon('');
+    setEmel('');
+    onLeadCreated?.(savedLead);
+  });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -48,88 +72,21 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
 
   if (!isOpen) return null;
 
-  const buildMailtoLink = (cleanNama: string, cleanTelefon: string, cleanEmel: string) => {
-    const subject = encodeURIComponent(`Permohonan Baru GIS (Logistik & TVET) - ${cleanNama}`);
-    const body = encodeURIComponent(
-      `Salam Puan Awatif,\n\nBerikut adalah maklumat pendaftaran minat baru daripada laman web GIS:\n\n` +
-        `1. Nama Penuh: ${cleanNama}\n` +
-        `2. No. Telefon: ${cleanTelefon}\n` +
-        `3. Alamat Emel: ${cleanEmel}\n\n` +
-        `Mohon hubungi untuk konsultasi pengajian Logistik, TVET & bantuan kewangan.`,
-    );
-    return `mailto:${TARGET_EMAIL}?subject=${subject}&body=${body}`;
+  const handleClose = () => {
+    reset();
+    onClose();
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-
-    const cleanNama = nama.trim();
-    const cleanTelefon = telefon.trim();
-    const cleanEmel = emel.trim();
-
-    if (!cleanNama || !cleanTelefon || !cleanEmel) {
-      setSubmitState({
-        status: 'error',
-        message: 'Sila lengkapkan ketiga-tiga maklumat sebelum menghantar.',
-      });
-      return;
-    }
-
-    const digitsOnly = cleanTelefon.replace(/\D/g, '');
-    if (digitsOnly.length < 8) {
-      setSubmitState({
-        status: 'error',
-        message: 'Sila masukkan nombor telefon yang sah (sekurang-kurangnya 8 digit).',
-      });
-      return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(cleanEmel)) {
-      setSubmitState({
-        status: 'error',
-        message: 'Sila masukkan format alamat emel yang sah.',
-      });
-      return;
-    }
-
-    setSubmitState({ status: 'submitting' });
-    const mailtoLink = buildMailtoLink(cleanNama, cleanTelefon, cleanEmel);
-
-    try {
-      const response = await fetch(`https://formsubmit.co/ajax/${TARGET_EMAIL}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          _subject: `Permohonan Baru GIS - ${cleanNama}`,
-          _template: 'table',
-          Nama: cleanNama,
-          'No. Telefon': cleanTelefon,
-          Email: cleanEmel,
-          Sumber: 'Landing Page GIS (Light Mode Cinematic)',
-        }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok && (result.success === 'true' || result.success === true)) {
-        setSubmitState({
-          status: 'success',
-          nama: cleanNama,
-          telefon: cleanTelefon,
-        });
-        setNama('');
-        setTelefon('');
-        setEmel('');
-      } else {
-        setSubmitState({ status: 'fallback', mailtoLink });
-      }
-    } catch {
-      setSubmitState({ status: 'fallback', mailtoLink });
-    }
+    await submitLead({
+      nama,
+      telefon,
+      emel,
+      programPilihan,
+      minatPembiayaan,
+      sumber: 'Landing Page GIS (Modal Daftar Minat)',
+    });
   };
 
   return (
@@ -141,13 +98,13 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
     >
       {/* Light-mode blurred backdrop */}
       <div
-        onClick={onClose}
+        onClick={handleClose}
         aria-hidden="true"
         className="fixed inset-0 bg-slate-900/45 backdrop-blur-sm transition-opacity"
       />
 
       <div className="flex min-h-full items-center justify-center p-4 sm:p-6">
-        <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white text-left shadow-2xl border border-slate-200">
+        <div className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-white text-left shadow-2xl border border-slate-200">
           {/* Modal Header */}
           <div className="bg-gradient-to-r from-[#FFFBEB] to-blue-50/70 px-6 py-5 border-b border-slate-200 flex items-center justify-between gap-4">
             <div>
@@ -164,7 +121,7 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
 
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Tutup borang pendaftaran"
               className="w-10 h-10 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1E40AF]"
             >
@@ -174,156 +131,247 @@ export function ApplyModal({ isOpen, onClose }: ApplyModalProps) {
 
           {/* Modal Body */}
           <div className="p-6 sm:p-7 bg-white">
-            <p className="text-sm text-slate-600 mb-5 leading-relaxed">
-              Lengkapkan <strong className="font-semibold text-[#0F294A]">3 maklumat</strong> di bawah. Permohonan anda akan terus dihantar kepada pegawai kami untuk tindakan segera.
-            </p>
-
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
-              {/* 1. Nama Penuh */}
-              <div>
-                <label
-                  htmlFor="gis-full-name"
-                  className="block text-sm font-bold text-[#0F294A] mb-1.5"
-                >
-                  1. Nama Penuh <span className="text-rose-600">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-                    <User className="w-4 h-4" aria-hidden="true" />
-                  </span>
-                  <input
-                    ref={firstInputRef}
-                    id="gis-full-name"
-                    name="Nama"
-                    type="text"
-                    required
-                    value={nama}
-                    onChange={(e) => setNama(e.target.value)}
-                    placeholder="Masukkan nama penuh anda"
-                    className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] transition"
+            {state.status === 'success' ? (
+              <div className="space-y-5" role="status">
+                <div className="rounded-xl p-5 bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-start gap-3.5">
+                  <CheckCircle2
+                    className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5"
+                    aria-hidden="true"
                   />
+                  <div className="space-y-1.5">
+                    <p className="font-heading font-bold text-base">
+                      Pendaftaran Berjaya Direkodkan!
+                    </p>
+                    <p className="text-sm text-emerald-900 leading-relaxed">
+                      Terima kasih, <strong>{state.lead.nama}</strong>. Maklumat anda untuk program{' '}
+                      <strong>{state.lead.programPilihan}</strong> telah disimpan dalam sistem CRM GIS.
+                      {state.emailNotified
+                        ? ` Notifikasi turut dihantar ke ${NOTIFY_EMAIL}.`
+                        : ''}
+                    </p>
+                    <p className="text-xs text-emerald-800 pt-1">
+                      Pegawai kaunselor kami akan menghubungi nombor{' '}
+                      <strong className="tabular-nums">{state.lead.telefon}</strong> dalam masa terdekat.
+                    </p>
+                  </div>
+                </div>
+
+                {!state.emailNotified && (
+                  <div className="rounded-xl p-4 bg-[#FFFBEB] border border-amber-200 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <span>Mahu hantar salinan terus melalui aplikasi emel anda?</span>
+                    <a
+                      href={state.mailtoLink}
+                      className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#0F294A] hover:bg-[#1E40AF] text-white font-semibold whitespace-nowrap shrink-0 transition-colors"
+                    >
+                      <Mail className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
+                      <span>Hantar Ke Gmail</span>
+                    </a>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-[#0F294A] font-semibold text-sm transition-colors cursor-pointer"
+                  >
+                    Daftar Prospek Lain
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleClose}
+                    className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0F294A] hover:bg-[#1E40AF] text-white font-semibold text-sm transition-colors cursor-pointer"
+                  >
+                    Selesai &amp; Tutup
+                  </button>
                 </div>
               </div>
-
-              {/* 2. No. Telefon */}
-              <div>
-                <label
-                  htmlFor="gis-phone"
-                  className="block text-sm font-bold text-[#0F294A] mb-1.5"
-                >
-                  2. No. Telefon <span className="text-rose-600">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-                    <Phone className="w-4 h-4" aria-hidden="true" />
-                  </span>
-                  <input
-                    id="gis-phone"
-                    name="No_Telefon"
-                    type="tel"
-                    required
-                    value={telefon}
-                    onChange={(e) => setTelefon(e.target.value)}
-                    placeholder="Contoh: 012-3456789"
-                    className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] transition"
-                  />
-                </div>
-              </div>
-
-              {/* 3. Alamat Emel */}
-              <div>
-                <label
-                  htmlFor="gis-email"
-                  className="block text-sm font-bold text-[#0F294A] mb-1.5"
-                >
-                  3. Alamat Emel <span className="text-rose-600">*</span>
-                </label>
-                <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
-                    <Mail className="w-4 h-4" aria-hidden="true" />
-                  </span>
-                  <input
-                    id="gis-email"
-                    name="Email"
-                    type="email"
-                    required
-                    value={emel}
-                    onChange={(e) => setEmel(e.target.value)}
-                    placeholder="Contoh: nama@gmail.com"
-                    className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] transition"
-                  />
-                </div>
-              </div>
-
-              {/* Submit Button */}
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  disabled={submitState.status === 'submitting'}
-                  className="w-full min-h-[48px] bg-[#D97706] hover:bg-[#B45309] disabled:opacity-70 disabled:cursor-not-allowed text-white font-bold text-base py-3.5 px-6 rounded-xl shadow-sm transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Send className="w-4 h-4" aria-hidden="true" />
-                  <span>
-                    {submitState.status === 'submitting'
-                      ? 'Sedang Menghantar...'
-                      : 'Submit Permohonan'}
-                  </span>
-                </button>
-              </div>
-            </form>
-
-            {/* Feedback States */}
-            {submitState.status === 'error' && (
-              <div
-                role="alert"
-                className="mt-5 rounded-xl p-4 text-sm bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-2.5"
-              >
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
-                <span>{submitState.message}</span>
-              </div>
-            )}
-
-            {submitState.status === 'success' && (
-              <div
-                role="status"
-                className="mt-5 rounded-xl p-4 text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-3"
-              >
-                <CheckCircle2
-                  className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5"
-                  aria-hidden="true"
-                />
-                <div>
-                  <p className="font-bold">Terima kasih, {submitState.nama}.</p>
-                  <p className="text-emerald-800 mt-1 leading-relaxed">
-                    Maklumat anda telah dihantar terus ke{' '}
-                    <strong className="font-semibold">{TARGET_EMAIL}</strong>. Kami akan menghubungi anda di nombor{' '}
-                    <strong className="font-semibold">{submitState.telefon}</strong> sebentar lagi.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {submitState.status === 'fallback' && (
-              <div
-                role="status"
-                className="mt-5 rounded-xl p-4 text-sm bg-[#FFFBEB] border border-amber-200 text-amber-950 space-y-2.5"
-              >
-                <p className="font-bold flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-[#B45309]" aria-hidden="true" />
-                  <span>Sahkan Penghantaran Melalui Emel</span>
+            ) : (
+              <>
+                <p className="text-sm text-slate-600 mb-5 leading-relaxed">
+                  Lengkapkan maklumat di bawah. Rekod anda akan terus disimpan ke dalam sistem{' '}
+                  <strong className="font-semibold text-[#0F294A]">CRM Kaunselor GIS</strong> untuk tindakan susulan segera.
                 </p>
-                <p className="text-xs text-amber-900 leading-relaxed">
-                  Klik butang di bawah untuk menghantar maklumat anda terus ke{' '}
-                  <strong>{TARGET_EMAIL}</strong> melalui aplikasi emel anda:
-                </p>
-                <a
-                  href={submitState.mailtoLink}
-                  className="inline-flex items-center justify-center gap-2 w-full min-h-[42px] bg-[#0F294A] hover:bg-[#1E40AF] text-white font-bold text-xs py-2.5 px-4 rounded-lg transition-colors"
-                >
-                  <Send className="w-3.5 h-3.5 text-amber-400" aria-hidden="true" />
-                  <span>Hantar Terus Ke Gmail Sekarang</span>
-                </a>
-              </div>
+
+                <form onSubmit={handleSubmit} noValidate className="space-y-4">
+                  {/* 1. Nama Penuh */}
+                  <div>
+                    <label
+                      htmlFor="gis-full-name"
+                      className="block text-sm font-bold text-[#0F294A] mb-1.5"
+                    >
+                      1. Nama Penuh <span className="text-rose-600">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                        <User className="w-4 h-4" aria-hidden="true" />
+                      </span>
+                      <input
+                        ref={firstInputRef}
+                        id="gis-full-name"
+                        name="nama"
+                        type="text"
+                        required
+                        disabled={isLoading}
+                        value={nama}
+                        onChange={(e) => setNama(e.target.value)}
+                        placeholder="Masukkan nama penuh ibu bapa / pelajar"
+                        className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 2. No. Telefon */}
+                  <div>
+                    <label
+                      htmlFor="gis-phone"
+                      className="block text-sm font-bold text-[#0F294A] mb-1.5"
+                    >
+                      2. No. Telefon <span className="text-rose-600">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                        <Phone className="w-4 h-4" aria-hidden="true" />
+                      </span>
+                      <input
+                        id="gis-phone"
+                        name="telefon"
+                        type="tel"
+                        required
+                        disabled={isLoading}
+                        value={telefon}
+                        onChange={(e) => setTelefon(e.target.value)}
+                        placeholder="Contoh: 012-3456789"
+                        className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3. Alamat Emel */}
+                  <div>
+                    <label
+                      htmlFor="gis-email"
+                      className="block text-sm font-bold text-[#0F294A] mb-1.5"
+                    >
+                      3. Alamat Emel <span className="text-rose-600">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
+                        <Mail className="w-4 h-4" aria-hidden="true" />
+                      </span>
+                      <input
+                        id="gis-email"
+                        name="emel"
+                        type="email"
+                        required
+                        disabled={isLoading}
+                        value={emel}
+                        onChange={(e) => setEmel(e.target.value)}
+                        placeholder="Contoh: nama@gmail.com"
+                        className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 4 & 5. Program Pilihan & Minat Pembiayaan (untuk CRM) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    <div>
+                      <label
+                        htmlFor="gis-program"
+                        className="block text-xs font-bold text-[#0F294A] mb-1.5"
+                      >
+                        4. Program Pilihan
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+                          <BookOpen className="w-4 h-4" aria-hidden="true" />
+                        </span>
+                        <select
+                          id="gis-program"
+                          name="programPilihan"
+                          disabled={isLoading}
+                          value={programPilihan}
+                          onChange={(e) =>
+                            setProgramPilihan(e.target.value as ProgramChoice)
+                          }
+                          className="w-full h-11 pl-9 pr-3 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
+                        >
+                          {PROGRAM_OPTIONS.map((prog) => (
+                            <option key={prog} value={prog}>
+                              {prog}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="gis-funding"
+                        className="block text-xs font-bold text-[#0F294A] mb-1.5"
+                      >
+                        5. Minat Pembiayaan
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 pointer-events-none">
+                          <Coins className="w-4 h-4" aria-hidden="true" />
+                        </span>
+                        <select
+                          id="gis-funding"
+                          name="minatPembiayaan"
+                          disabled={isLoading}
+                          value={minatPembiayaan}
+                          onChange={(e) =>
+                            setMinatPembiayaan(e.target.value as FundingInterest)
+                          }
+                          className="w-full h-11 pl-9 pr-3 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-xs sm:text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
+                        >
+                          {FUNDING_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Error State Feedback */}
+                  {state.status === 'error' && (
+                    <div
+                      role="alert"
+                      className="rounded-xl p-3.5 text-sm bg-rose-50 border border-rose-200 text-rose-800 flex items-start gap-2.5"
+                    >
+                      <AlertCircle
+                        className="w-4 h-4 text-rose-600 shrink-0 mt-0.5"
+                        aria-hidden="true"
+                      />
+                      <span>{state.message}</span>
+                    </div>
+                  )}
+
+                  {/* Submit Button with Loading State */}
+                  <div className="pt-2">
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full min-h-[48px] bg-[#D97706] hover:bg-[#B45309] disabled:opacity-75 disabled:cursor-not-allowed text-white font-bold text-base py-3.5 px-6 rounded-xl shadow-sm transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                          <span>Menyimpan Ke CRM...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4" aria-hidden="true" />
+                          <span>Submit Permohonan</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
           </div>
         </div>

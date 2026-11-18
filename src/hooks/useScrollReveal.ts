@@ -1,9 +1,11 @@
 import { useEffect } from 'react';
 
-export function useScrollReveal() {
+export function useScrollReveal(triggerKey?: string) {
   useEffect(() => {
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const elements = document.querySelectorAll<HTMLElement>('.reveal-up, .reveal-left, .reveal-right');
+
+    if (elements.length === 0) return;
 
     if (prefersReducedMotion || !('IntersectionObserver' in window)) {
       elements.forEach((el) => el.classList.add('reveal-visible'));
@@ -29,5 +31,5 @@ export function useScrollReveal() {
     elements.forEach((el) => observer.observe(el));
 
     return () => observer.disconnect();
-  }, []);
+  }, [triggerKey]);
 }

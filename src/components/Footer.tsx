@@ -1,6 +1,10 @@
 import { GraduationCap } from 'lucide-react';
 
-export function Footer() {
+interface FooterProps {
+  onOpenCrm?: () => void;
+}
+
+export function Footer({ onOpenCrm }: FooterProps) {
   return (
     <footer className="bg-white border-t border-slate-200 py-10 text-slate-500">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm">
@@ -13,9 +17,23 @@ export function Footer() {
           </span>
         </div>
 
-        <p className="text-xs text-center sm:text-right text-slate-500">
-          &copy; {new Date().getFullYear()} GIS. Program Pengajian Logistik &amp; TVET Diiktiraf MQA.
-        </p>
+        <div className="flex flex-wrap items-center justify-center sm:justify-end gap-x-4 gap-y-2 text-xs text-slate-500">
+          <span>
+            &copy; {new Date().getFullYear()} GIS. Program Pengajian Logistik &amp; TVET Diiktiraf MQA.
+          </span>
+          {onOpenCrm && (
+            <>
+              <span aria-hidden="true">·</span>
+              <button
+                type="button"
+                onClick={onOpenCrm}
+                className="font-semibold text-[#0F294A] hover:text-[#1E40AF] hover:underline underline-offset-4 cursor-pointer"
+              >
+                Portal Kaunselor (CRM)
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </footer>
   );
