@@ -1,0 +1,6 @@
+{
+  "name": "GIS — Program Pengajian Logistik & TVET",
+  "description": "Landing page rasmi GIS (Institusi Pengajian Tinggi) untuk ibu bapa pelajar berumur 18 tahun ke atas bagi program pengajian Logistik & TVET diiktiraf MQA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
