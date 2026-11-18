@@ -11,24 +11,35 @@ import { FinancialAccreditationSection } from './components/FinancialAccreditati
 import { Footer } from './components/Footer';
 import { HeroSection } from './components/HeroSection';
 import { Navbar } from './components/Navbar';
-import { useAdminAuth } from './hooks/useAdminAuth';
+import { SignupView } from './components/SignupView';
+import { useAdminAuth, type RegisteredUserProfile } from './hooks/useAdminAuth';
 import { useScrollReveal } from './hooks/useScrollReveal';
 
 type ViewMode = 'landing' | 'crm';
+type AuthScreen = 'login' | 'signup';
 
 export default function App() {
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
-    window.location.hash === '#crm' ? 'crm' : 'landing',
+    window.location.hash === '#crm' || window.location.hash === '#daftar'
+      ? 'crm'
+      : 'landing',
   );
+  const [authScreen, setAuthScreen] = useState<AuthScreen>(() =>
+    window.location.hash === '#daftar' ? 'signup' : 'login',
+  );
+  const [prefilledUsername, setPrefilledUsername] = useState('');
+  const [signupSuccessMessage, setSignupSuccessMessage] = useState<string | null>(null);
   const [crmRefreshSignal, setCrmRefreshSignal] = useState(0);
 
   const {
     isAuthenticated,
     username,
+    fullName,
     token,
     isCheckingSession,
     login,
+    register,
     logout,
   } = useAdminAuth();
 
@@ -36,7 +47,15 @@ export default function App() {
 
   useEffect(() => {
     const handleHashChange = () => {
-      setViewMode(window.location.hash === '#crm' ? 'crm' : 'landing');
+      if (window.location.hash === '#crm') {
+        setViewMode('crm');
+        setAuthScreen('login');
+      } else if (window.location.hash === '#daftar') {
+        setViewMode('crm');
+        setAuthScreen('signup');
+      } else {
+        setViewMode('landing');
+      }
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
@@ -48,15 +67,25 @@ export default function App() {
   const openCrmView = () => {
     window.location.hash = 'crm';
     setViewMode('crm');
+    setAuthScreen('login');
     window.scrollTo({ top: 0, behavior: 'auto' });
   };
 
   const backToLanding = () => {
-    if (window.location.hash === '#crm') {
+    if (window.location.hash === '#crm' || window.location.hash === '#daftar') {
       window.history.replaceState(null, '', window.location.pathname);
     }
     setViewMode('landing');
     window.scrollTo({ top: 0, behavior: 'auto' });
+  };
+
+  const handleRegistrationSuccess = (user: RegisteredUserProfile) => {
+    setPrefilledUsername(user.username);
+    setSignupSuccessMessage(
+      `Pendaftaran akaun untuk ${user.fullName} (@${user.username}) berjaya! Sila masukkan kata laluan anda untuk log masuk ke Dashboard CRM.`,
+    );
+    setAuthScreen('login');
+    window.location.hash = 'crm';
   };
 
   const renderCrmView = () => {
@@ -71,15 +100,46 @@ export default function App() {
       );
     }
 
+    // Route Guard: Hanya pengguna sah boleh mengakses AdminDashboard
     if (!isAuthenticated || !token || !username) {
-      return <AdminLogin onLogin={login} onBackToLanding={backToLanding} />;
+      if (authScreen === 'signup') {
+        return (
+          <SignupView
+            onRegister={register}
+            onRegistrationSuccess={handleRegistrationSuccess}
+            onSwitchToLogin={() => {
+              setAuthScreen('login');
+              window.location.hash = 'crm';
+            }}
+            onBackToLanding={backToLanding}
+          />
+        );
+      }
+
+      return (
+        <AdminLogin
+          onLogin={login}
+          onSwitchToSignup={() => {
+            setSignupSuccessMessage(null);
+            setAuthScreen('signup');
+            window.location.hash = 'daftar';
+          }}
+          onBackToLanding={backToLanding}
+          initialUsername={prefilledUsername}
+          successBanner={signupSuccessMessage}
+        />
+      );
     }
 
     return (
       <AdminDashboard
-        adminUsername={username}
+        adminUsername={fullName ? `${fullName} (@${username})` : username}
         authToken={token}
-        onLogout={logout}
+        onLogout={() => {
+          logout();
+          setSignupSuccessMessage(null);
+          setAuthScreen('login');
+        }}
         onBackToLanding={backToLanding}
         onOpenApplyModal={openModal}
         refreshSignal={crmRefreshSignal}

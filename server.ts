@@ -18,6 +18,7 @@ dotenv.config();
 const PORT = Number(process.env.PORT) || 3000;
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const LEADS_FILE = path.join(DATA_DIR, 'leads.json');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const VALID_STATUSES = Object.keys(LEAD_STATUS_LABELS) as LeadStatus[];
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || 'admin';
@@ -28,7 +29,17 @@ const SESSION_SECRET =
 
 interface AdminTokenPayload {
   username: string;
+  fullName?: string;
   exp: number;
+}
+
+interface StoredCrmUser {
+  id: string;
+  fullName: string;
+  email: string;
+  username: string;
+  passwordHash: string;
+  createdAt: string;
 }
 
 function constantTimeMatch(a: string, b: string): boolean {
@@ -38,10 +49,26 @@ function constantTimeMatch(a: string, b: string): boolean {
   return crypto.timingSafeEqual(bufA, bufB);
 }
 
-function signAdminToken(username: string): string {
+function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${derived}`;
+}
+
+function verifyPasswordHash(password: string, storedHash: string): boolean {
+  const [salt, keyHex] = storedHash.split(':');
+  if (!salt || !keyHex) return false;
+  const keyBuf = Buffer.from(keyHex, 'hex');
+  const derivedBuf = crypto.scryptSync(password, salt, 64);
+  if (keyBuf.length !== derivedBuf.length) return false;
+  return crypto.timingSafeEqual(keyBuf, derivedBuf);
+}
+
+function signAdminToken(username: string, fullName?: string): string {
   const payload: AdminTokenPayload = {
     username,
-    exp: Date.now() + 1000 * 60 * 60 * 24 * 7, // 7 hari
+    fullName,
+    exp: Date.now() + 1000 * 60 * 60 * 24 * 7,
   };
   const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
   const signature = crypto
@@ -93,17 +120,17 @@ function requireAdminAuth(req: Request, res: Response, next: NextFunction): void
   next();
 }
 
-async function ensureLeadsFile(): Promise<void> {
+async function ensureJsonFile(filePath: string): Promise<void> {
   await fs.mkdir(DATA_DIR, { recursive: true });
   try {
-    await fs.access(LEADS_FILE);
+    await fs.access(filePath);
   } catch {
-    await fs.writeFile(LEADS_FILE, '[]', 'utf8');
+    await fs.writeFile(filePath, '[]', 'utf8');
   }
 }
 
 async function readLeads(): Promise<CrmLeadRecord[]> {
-  await ensureLeadsFile();
+  await ensureJsonFile(LEADS_FILE);
   try {
     const raw = await fs.readFile(LEADS_FILE, 'utf8');
     const parsed = JSON.parse(raw);
@@ -114,10 +141,28 @@ async function readLeads(): Promise<CrmLeadRecord[]> {
 }
 
 async function writeLeads(leads: CrmLeadRecord[]): Promise<void> {
-  await ensureLeadsFile();
+  await ensureJsonFile(LEADS_FILE);
   const tempFile = `${LEADS_FILE}.tmp`;
   await fs.writeFile(tempFile, JSON.stringify(leads, null, 2), 'utf8');
   await fs.rename(tempFile, LEADS_FILE);
+}
+
+async function readUsers(): Promise<StoredCrmUser[]> {
+  await ensureJsonFile(USERS_FILE);
+  try {
+    const raw = await fs.readFile(USERS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as StoredCrmUser[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeUsers(users: StoredCrmUser[]): Promise<void> {
+  await ensureJsonFile(USERS_FILE);
+  const tempFile = `${USERS_FILE}.tmp`;
+  await fs.writeFile(tempFile, JSON.stringify(users, null, 2), 'utf8');
+  await fs.rename(tempFile, USERS_FILE);
 }
 
 async function forwardToExternalCrm(
@@ -168,30 +213,146 @@ async function startServer() {
     });
   });
 
-  // Admin Authentication Routes
-  app.post('/api/admin/login', (req: Request, res: Response) => {
-    const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  // Register New CRM User Route
+  app.post('/api/admin/register', async (req: Request, res: Response) => {
+    const fullName = typeof req.body?.fullName === 'string' ? req.body.fullName.trim() : '';
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const username =
+      typeof req.body?.username === 'string' ? req.body.username.trim().toLowerCase() : '';
+    const password = typeof req.body?.password === 'string' ? req.body.password : '';
+    const confirmPassword =
+      typeof req.body?.confirmPassword === 'string' ? req.body.confirmPassword : '';
+
+    if (!fullName || !email || !username || !password || !confirmPassword) {
+      res.status(400).json({ error: 'Sila lengkapkan semua medan pendaftaran.' });
+      return;
+    }
+
+    if (fullName.length < 2) {
+      res.status(400).json({ error: 'Nama penuh mestilah sekurang-kurangnya 2 aksara.' });
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      res.status(400).json({ error: 'Format alamat emel tidak sah.' });
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9._-]{3,32}$/.test(username)) {
+      res.status(400).json({
+        error: 'Username mestilah 3–32 aksara (huruf, nombor, titik, atau garis bawah tanpa ruang).',
+      });
+      return;
+    }
+
+    if (password.length < 6) {
+      res.status(400).json({ error: 'Kata laluan mestilah sekurang-kurangnya 6 aksara.' });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      res.status(400).json({ error: 'Kata laluan dan pengesahan kata laluan tidak sepadan.' });
+      return;
+    }
+
+    try {
+      const existingUsers = await readUsers();
+
+      const usernameExists =
+        username === ADMIN_USERNAME.toLowerCase() ||
+        existingUsers.some((u) => u.username.toLowerCase() === username);
+      if (usernameExists) {
+        res.status(409).json({
+          error: 'Username ini sudah didaftarkan. Sila pilih username lain atau log masuk.',
+        });
+        return;
+      }
+
+      const emailExists = existingUsers.some((u) => u.email.toLowerCase() === email);
+      if (emailExists) {
+        res.status(409).json({
+          error: 'Alamat emel ini sudah didaftarkan. Sila gunakan emel lain atau log masuk.',
+        });
+        return;
+      }
+
+      const newUser: StoredCrmUser = {
+        id: crypto.randomUUID(),
+        fullName,
+        email,
+        username,
+        passwordHash: hashPassword(password),
+        createdAt: new Date().toISOString(),
+      };
+
+      await writeUsers([newUser, ...existingUsers]);
+
+      res.status(201).json({
+        registered: true,
+        user: {
+          id: newUser.id,
+          fullName: newUser.fullName,
+          email: newUser.email,
+          username: newUser.username,
+          createdAt: newUser.createdAt,
+        },
+      });
+    } catch (error) {
+      console.error('[CRM] Failed to register user:', error);
+      res.status(500).json({ error: 'Gagal mendaftarkan pengguna baharu.' });
+    }
+  });
+
+  // Admin & Registered User Login Route
+  app.post('/api/admin/login', async (req: Request, res: Response) => {
+    const usernameInput = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
 
-    if (!username || !password) {
+    if (!usernameInput || !password) {
       res.status(400).json({ error: 'Sila masukkan nama pengguna dan kata laluan.' });
       return;
     }
 
-    const validUser = constantTimeMatch(username, ADMIN_USERNAME);
-    const validPass = constantTimeMatch(password, ADMIN_PASSWORD);
+    // 1. Semak akaun admin utama (.env)
+    const isEnvAdmin =
+      constantTimeMatch(usernameInput, ADMIN_USERNAME) &&
+      constantTimeMatch(password, ADMIN_PASSWORD);
 
-    if (!validUser || !validPass) {
-      res.status(401).json({ error: 'Nama pengguna atau kata laluan tidak tepat.' });
+    if (isEnvAdmin) {
+      const token = signAdminToken(ADMIN_USERNAME, 'Pentadbir Utama');
+      res.json({
+        authenticated: true,
+        username: ADMIN_USERNAME,
+        fullName: 'Pentadbir Utama',
+        token,
+      });
       return;
     }
 
-    const token = signAdminToken(username);
-    res.json({
-      authenticated: true,
-      username,
-      token,
-    });
+    // 2. Semak pengguna berdaftar dalam users.json
+    try {
+      const users = await readUsers();
+      const normalized = usernameInput.toLowerCase();
+      const matchedUser = users.find(
+        (u) => u.username.toLowerCase() === normalized || u.email.toLowerCase() === normalized,
+      );
+
+      if (!matchedUser || !verifyPasswordHash(password, matchedUser.passwordHash)) {
+        res.status(401).json({ error: 'Nama pengguna atau kata laluan tidak tepat.' });
+        return;
+      }
+
+      const token = signAdminToken(matchedUser.username, matchedUser.fullName);
+      res.json({
+        authenticated: true,
+        username: matchedUser.username,
+        fullName: matchedUser.fullName,
+        token,
+      });
+    } catch (error) {
+      console.error('[CRM] Login error:', error);
+      res.status(500).json({ error: 'Ralat pelayan semasa mengesahkan log masuk.' });
+    }
   });
 
   app.get('/api/admin/session', (req: Request, res: Response) => {
@@ -203,6 +364,7 @@ async function startServer() {
     res.json({
       authenticated: true,
       username: session.username,
+      fullName: session.fullName,
     });
   });
 

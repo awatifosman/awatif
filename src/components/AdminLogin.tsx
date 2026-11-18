@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import {
   AlertCircle,
   ArrowLeft,
+  CheckCircle2,
   Eye,
   EyeOff,
   GraduationCap,
@@ -16,11 +17,20 @@ interface AdminLoginProps {
     username: string,
     password: string,
   ) => Promise<{ ok: boolean; error?: string }>;
+  onSwitchToSignup: () => void;
   onBackToLanding: () => void;
+  initialUsername?: string;
+  successBanner?: string | null;
 }
 
-export function AdminLogin({ onLogin, onBackToLanding }: AdminLoginProps) {
-  const [username, setUsername] = useState('');
+export function AdminLogin({
+  onLogin,
+  onSwitchToSignup,
+  onBackToLanding,
+  initialUsername = '',
+  successBanner = null,
+}: AdminLoginProps) {
+  const [username, setUsername] = useState(initialUsername);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -61,7 +71,7 @@ export function AdminLogin({ onLogin, onBackToLanding }: AdminLoginProps) {
       {/* Centered Login Card */}
       <div className="w-full max-w-md mx-auto my-auto py-8">
         <div className="rounded-2xl bg-white border border-slate-200 shadow-lg overflow-hidden">
-          <div className="bg-gradient-to-r from-[#FFFBEB] to-blue-50/70 px-6 py-6 border-b border-slate-200">
+          <div className="bg-gradient-to-r from-[#FFFBEB] to-blue-50/70 px-6 py-5 border-b border-slate-200">
             <div className="flex items-center gap-3 mb-3">
               <span className="w-10 h-10 rounded-xl bg-[#0F294A] text-amber-400 flex items-center justify-center">
                 <GraduationCap className="w-5 h-5" aria-hidden="true" />
@@ -75,19 +85,48 @@ export function AdminLogin({ onLogin, onBackToLanding }: AdminLoginProps) {
                 </h1>
               </div>
             </div>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Sila log masuk menggunakan akaun pentadbir yang sah untuk mengakses senarai pendaftaran minat ibu bapa dan pelajar.
-            </p>
+
+            {/* Auth Mode Switcher */}
+            <div className="grid grid-cols-2 gap-1 p-1 bg-white/80 border border-slate-200 rounded-xl mt-3">
+              <button
+                type="button"
+                aria-current="page"
+                className="py-2 text-xs font-bold rounded-lg bg-[#0F294A] text-white shadow-sm cursor-default"
+              >
+                Log Masuk
+              </button>
+              <button
+                type="button"
+                onClick={onSwitchToSignup}
+                className="py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-[#0F294A] transition-colors cursor-pointer"
+              >
+                Daftar Akaun
+              </button>
+            </div>
           </div>
 
           <form onSubmit={handleSubmit} noValidate className="p-6 sm:p-7 space-y-4">
+            {/* Registration Success Banner */}
+            {successBanner && (
+              <div
+                role="status"
+                className="rounded-xl p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm flex items-start gap-2.5"
+              >
+                <CheckCircle2
+                  className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <span>{successBanner}</span>
+              </div>
+            )}
+
             {/* Username */}
             <div>
               <label
                 htmlFor="admin-username"
                 className="block text-sm font-bold text-[#0F294A] mb-1.5"
               >
-                Nama Pengguna (Username)
+                Nama Pengguna (Username) atau Emel
               </label>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center text-slate-400 pointer-events-none">
@@ -102,7 +141,7 @@ export function AdminLogin({ onLogin, onBackToLanding }: AdminLoginProps) {
                   disabled={isSubmitting}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Masukkan username admin"
+                  placeholder="Masukkan username atau emel"
                   className="w-full h-11 pl-10 pr-4 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
                 />
               </div>
@@ -129,7 +168,7 @@ export function AdminLogin({ onLogin, onBackToLanding }: AdminLoginProps) {
                   disabled={isSubmitting}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Masukkan kata laluan admin"
+                  placeholder="Masukkan kata laluan"
                   className="w-full h-11 pl-10 pr-11 rounded-xl bg-[#F8FAFC] border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D97706] focus:border-[#D97706] disabled:opacity-60 transition"
                 />
                 <button
@@ -178,6 +217,17 @@ export function AdminLogin({ onLogin, onBackToLanding }: AdminLoginProps) {
                 </>
               )}
             </button>
+
+            <p className="text-center text-xs text-slate-600 pt-1">
+              Belum mempunyai akaun kaunselor?{' '}
+              <button
+                type="button"
+                onClick={onSwitchToSignup}
+                className="font-bold text-[#B45309] hover:text-[#D97706] hover:underline cursor-pointer"
+              >
+                Daftar Akaun Baharu
+              </button>
+            </p>
           </form>
         </div>
       </div>
